@@ -8,3 +8,5 @@ Please read the handout in detail to know more.
 You can download two application traces via [Baidu Cloud](https://pan.baidu.com/s/1HGR2XD61YRDWr4a6fh8Ugw?pwd=nkcs).
 
 refer:https://gitlab.ethz.ch/rahbera/champsim.git
+
+2022NKU体系结构大作业，最终跑分获得第一名
