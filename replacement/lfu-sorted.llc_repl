@@ -1,0 +1,109 @@
+#include "cache.h"
+#include <map>
+#include <cstring>
+#include <unordered_map>
+#include <vector>
+using namespace std;
+typedef uint32_t ui;
+typedef pair<ui, ui> PII;
+typedef pair<pair<ui, ui>, ui> PPU;
+#define Freq(x) (x).second
+
+class Node
+{
+public:
+    PPU data;
+    Node *prev, *next;
+    void init_list() { next = prev = this; };
+    void add_after(Node* nxt) { nxt->next = next; next->prev = nxt; next = nxt; nxt->prev = this; };
+    void add_before(Node* pre) { pre->next = this; pre->prev = prev; prev->next = pre; prev = pre;};
+    void del_after() { next = next->next; next->prev = this; };
+    void del() { prev->next = next; next->prev = prev; };
+    bool operator < (Node b) const { return Freq(data) <= Freq(b.data); };
+    ~Node() {};
+}head[LLC_SET];
+void swap_node(Node* pre, Node* nxt) { pre->del_after(); pre->add_before(nxt);}
+
+void move_forward(Node* h, Node* ele)
+{
+    while ((*(ele->next)) < (*ele) && ele->next != h) {
+        swap_node(ele, ele->next);
+    }
+}
+
+Node freq_head[LLC_SET][LLC_WAY + 1];
+map<PII, Node*> my_hash[LLC_SET];
+
+
+// initialize replacement state
+void CACHE::llc_initialize_replacement()
+{
+    cout << "Initialize LFU state" << endl;
+    memset(freq_head, 0, sizeof(freq_head));
+    for (int i = 0; i < LLC_SET; i ++ ) {
+        freq_head[i][0].data = {{-1, -1}, 0};
+        freq_head[i][0].init_list();
+    }
+    for (int i = 0; i < LLC_SET; i ++ )
+        for (int j = 1; j < LLC_WAY + 1; j ++ )
+        {
+            Node * cur = &freq_head[i][j];
+            my_hash[i][std::make_pair(i, j)] = cur;
+            freq_head[i][j - 1].add_after(cur);
+        }
+}
+
+// find replacement victim
+uint32_t CACHE::llc_find_victim(uint32_t cpu, uint64_t instr_id, uint32_t set, const BLOCK *current_set, uint64_t ip, uint64_t full_addr, uint32_t type)
+{
+    ui idx = freq_head[set][0].next->data.first.second;
+    return idx;
+}
+
+// called on every cache hit and cache fill
+void CACHE::llc_update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, uint64_t full_addr, uint64_t ip, uint64_t victim_addr, uint32_t type, uint8_t hit)
+{
+    string TYPE_NAME;
+    if (type == LOAD)
+        TYPE_NAME = "LOAD";
+    else if (type == RFO)
+        TYPE_NAME = "RFO";
+    else if (type == PREFETCH)
+        TYPE_NAME = "PF";
+    else if (type == WRITEBACK)
+        TYPE_NAME = "WB";
+    else
+        assert(0);
+
+    if (hit)
+        TYPE_NAME += "_HIT";
+    else
+        TYPE_NAME += "_MISS";
+
+    if ((type == WRITEBACK) && ip)
+        assert(0);
+
+    // uncomment this line to see the LLC accesses
+    // cout << "CPU: " << cpu << "  LLC " << setw(9) << TYPE_NAME << " set: " << setw(5) << set << " way: " << setw(2) << way;
+    // cout << hex << " paddr: " << setw(12) << paddr << " ip: " << setw(8) << ip << " victim_addr: " << victim_addr << dec << endl;
+
+    if (hit)
+    {
+        Freq((freq_head[set][way + 1].data)) ++;
+        move_forward(&freq_head[set][0], &freq_head[set][way + 1]);
+    }
+    else
+    {
+        Freq((freq_head[set][way + 1].data)) = (type != PREFETCH);
+        if (Freq((freq_head[set][way].data)) > Freq((freq_head[set][way + 1].data))) {
+            freq_head[set][way + 1].del();
+            freq_head[set]->add_after(&freq_head[set][way + 1]);
+            move_forward(&freq_head[set][0], &freq_head[set][way + 1]);
+        }
+        else move_forward(&freq_head[set][0], &freq_head[set][way + 1]);
+    }
+}
+
+void CACHE::llc_replacement_final_stats()
+{
+}

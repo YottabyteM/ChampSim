@@ -1,0 +1,83 @@
+#include "cache.h"
+#include <map>
+typedef unsigned long long ull;
+typedef long long ll;
+typedef unsigned int ui;
+#define PREFETCH_DEGREE 10
+#define LOOK_AHEAD 1
+#define GHB_SIZE 256
+#define IT_SIZE 256
+static double cache_ac = 0, cache_miss = 0;
+static ui cur_idx = 0;
+struct GHB {
+    ull pc;
+    ull cacheline_addr;
+    ui prev;
+};
+static GHB my_GHB[GHB_SIZE];
+static map <int, ui> it;
+
+void CACHE::l2c_prefetcher_initialize()
+{
+    printf("GHB PC/CS prefetch Init\n");
+    memset(my_GHB, 0, sizeof(my_GHB));
+}
+
+uint32_t CACHE::l2c_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, uint8_t type, uint32_t metadata_in)
+{
+    ++ cache_ac;
+    if (!cache_hit)
+        ++ cache_miss;
+    uint64_t Cacheline_addr = addr >> LOG2_BLOCK_SIZE;
+    my_GHB[cur_idx].cacheline_addr = Cacheline_addr;
+    my_GHB[cur_idx].pc = ip;
+    if (my_GHB[it[ip % IT_SIZE]].pc == ip)
+        my_GHB[cur_idx].prev = it[ip % IT_SIZE];
+    else
+        my_GHB[cur_idx].prev = cur_idx;
+    it[ip % IT_SIZE] = cur_idx;
+
+    uint64_t prefetch_addr;
+    ll stride1 = my_GHB[cur_idx].cacheline_addr;
+    ui ele_idx = cur_idx;
+    ll stride2 = 0;
+
+    for (int i = 0; i < 4 && my_GHB[ele_idx].prev != ele_idx && my_GHB[ele_idx].pc == ip; ++ i)
+    {
+        ui prev_idx = my_GHB[ele_idx].prev;
+        switch (i)
+        {
+            case 1:
+                ele_idx = prev_idx;
+                stride2 = my_GHB[ele_idx].cacheline_addr;
+                stride1 = stride1 - stride2;
+                break;
+            case 2:
+                stride2 = stride2 - my_GHB[prev_idx].cacheline_addr;
+                break;
+            case 3:
+                if (stride1 == stride2)
+                {
+                    for (int offset = LOOK_AHEAD * stride1; offset <= (LOOK_AHEAD + PREFETCH_DEGREE) * stride1; offset += stride1)
+                    {
+                        prefetch_addr = (Cacheline_addr + offset) << LOG2_BLOCK_SIZE;
+                        prefetch_line(ip, addr, prefetch_addr, FILL_L2, 0);
+                    }
+                }
+                break;
+        }
+    }
+
+    cur_idx = (cur_idx + 1) % GHB_SIZE;
+    return metadata_in;
+}
+
+uint32_t CACHE::l2c_prefetcher_cache_fill(uint64_t addr, uint32_t set, uint32_t way, uint8_t prefetch, uint64_t evicted_addr, uint32_t metadata_in)
+{
+    return metadata_in;
+}
+
+void CACHE::l2c_prefetcher_final_stats()
+{
+    printf("GHB PC/CS prefetch is over\n");
+}
